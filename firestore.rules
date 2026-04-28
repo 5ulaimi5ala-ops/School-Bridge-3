@@ -1,0 +1,194 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitives & Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == '5ulaimi5ala@gmail.com' || 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Validation Helpers
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'name', 'role', 'points', 'badges', 'moods', 'email', 'createdAt']) &&
+             data.keys().size() == 8 &&
+             data.id == request.auth.uid &&
+             data.name is string && data.name.size() <= 100 &&
+             data.role in ['teacher', 'student', 'parent'] &&
+             data.points is int &&
+             data.badges is list &&
+             data.moods is list &&
+             data.email is string &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidClass(data) {
+      return data.keys().hasAll(['id', 'name', 'code', 'teacherId', 'teacherName', 'studentIds', 'studentNames', 'subjects', 'createdAt']) &&
+             data.keys().size() == 9 &&
+             isValidId(data.id) &&
+             data.name is string && data.name.size() <= 100 &&
+             data.code is string && data.code.size() <= 10 &&
+             data.teacherId is string &&
+             data.teacherName is string &&
+             data.studentIds is list &&
+             data.studentNames is list &&
+             data.subjects is list &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['id', 'classId', 'senderId', 'senderName', 'text', 'timestamp', 'type', 'isPinned']) &&
+             data.keys().size() == 8 &&
+             isValidId(data.id) &&
+             data.classId is string &&
+             data.senderId == request.auth.uid &&
+             data.text is string && data.text.size() <= 2000 &&
+             data.type in ['announcement', 'discussion'] &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidHelpRequest(data) {
+      return data.keys().hasAll(['id', 'studentId', 'studentName', 'classId', 'text', 'audioUrl', 'timestamp', 'isAnonymous', 'status']) &&
+             data.keys().size() == 9 &&
+             isValidId(data.id) &&
+             data.studentId == request.auth.uid &&
+             data.studentName is string &&
+             data.classId is string &&
+             data.timestamp is timestamp &&
+             data.status in ['pending', 'resolved'];
+    }
+
+    function isValidAIChat(data) {
+      return data.keys().hasAll(['id', 'studentId', 'messages', 'subject', 'createdAt']) &&
+             data.keys().size() == 5 &&
+             isValidId(data.id) &&
+             data.studentId == request.auth.uid &&
+             data.messages is list &&
+             data.createdAt is timestamp;
+    }
+
+    function canReadClassSubdocs(classId) {
+      let classData = get(/databases/$(database)/documents/classes/$(classId)).data;
+      return isClassTeacher(classData) || isClassStudent(classData);
+    }
+
+    function isValidReply(data) {
+      return data.keys().hasAll(['id', 'authorId', 'authorName', 'text', 'timestamp']) &&
+             data.keys().size() == 5 &&
+             isValidId(data.id) &&
+             data.authorId == request.auth.uid &&
+             data.text is string && data.text.size() <= 1000 &&
+             data.timestamp is timestamp;
+    }
+
+    // USERS
+    match /users/{userId} {
+      allow get: if isOwner(userId) || (
+        isSignedIn() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'parent' &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.childId == userId
+      );
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().createdAt == request.time;
+      allow update: if isOwner(userId) && isValidUser(incoming()) && (
+        // Allow updating points, badges, moods
+        incoming().diff(existing()).affectedKeys().hasOnly(['points', 'badges', 'moods'])
+      );
+    }
+
+    // CLASSES
+    match /classes/{classId} {
+      function isClassTeacher(data) {
+        return data.teacherId == request.auth.uid;
+      }
+      function isClassStudent(data) {
+        return request.auth.uid in data.studentIds;
+      }
+      
+      allow get: if isSignedIn() && (isClassTeacher(resource.data) || isClassStudent(resource.data));
+      allow list: if isSignedIn() && (resource.data.teacherId == request.auth.uid || request.auth.uid in resource.data.studentIds);
+      
+      allow create: if isVerified() && isValidClass(incoming()) && incoming().teacherId == request.auth.uid && incoming().createdAt == request.time;
+      allow update: if isSignedIn() && isValidClass(incoming()) && (
+        (isClassTeacher(existing()) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'subjects', 'studentIds', 'studentNames'])) ||
+        // Student joining
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['studentIds', 'studentNames']) &&
+          request.auth.uid in incoming().studentIds &&
+          existing().studentIds.size() < incoming().studentIds.size() &&
+          !isClassTeacher(existing())
+        )
+      );
+      allow delete: if isClassTeacher(existing());
+
+      // MESSAGES
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && isValidId(classId) && canReadClassSubdocs(classId);
+        allow create: if isSignedIn() && isValidId(classId) && isValidMessage(incoming()) && incoming().timestamp == request.time;
+        allow update: if isSignedIn() && isValidId(classId) && isValidMessage(incoming()) && (
+          (existing().senderId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['text'])) ||
+          (
+            isClassTeacher(get(/databases/$(database)/documents/classes/$(classId)).data) && 
+            incoming().diff(existing()).affectedKeys().hasOnly(['isPinned'])
+          )
+        );
+
+        match /replies/{replyId} {
+          allow read: if isSignedIn() && isValidId(classId) && canReadClassSubdocs(classId);
+          allow create: if isSignedIn() && isValidId(classId) && isValidReply(incoming()) && incoming().timestamp == request.time;
+        }
+      }
+
+      // HELP REQUESTS
+      match /helpRequests/{requestId} {
+        allow read: if isSignedIn() && isValidId(classId) && canReadClassSubdocs(classId);
+        allow create: if isSignedIn() && isValidId(classId) && isValidHelpRequest(incoming()) && incoming().timestamp == request.time;
+        allow update: if isSignedIn() && isValidId(classId) && isValidHelpRequest(incoming()) && (
+          (existing().studentId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['text', 'audioUrl'])) ||
+          (
+            isClassTeacher(get(/databases/$(database)/documents/classes/$(classId)).data) && 
+            incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+          )
+        );
+      }
+
+    }
+
+
+    // AI CHATS
+    match /aiChats/{chatId} {
+      allow read: if isOwner(resource.data.studentId);
+      allow create: if isSignedIn() && isValidAIChat(incoming()) && incoming().createdAt == request.time;
+      allow update: if isOwner(existing().studentId) && isValidAIChat(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['messages']);
+    }
+  }
+}

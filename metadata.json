@@ -1,0 +1,10 @@
+{
+  "name": "Remix: Remix: SchoolBridge",
+  "description": "SchoolBridge: An AI-powered educational hub with a Student AI Buddy, Gamified XP systems, \u0027Silent Struggle\u0027 detection for teachers, Focus Mode, and emotional check-ins. Bridging the gap between students, teachers, and parents.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation",
+    "notifications"
+  ]
+}

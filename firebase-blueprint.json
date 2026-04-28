@@ -1,0 +1,144 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user profile in the SchoolBridge platform.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["teacher", "student", "parent"] },
+        "childId": { "type": "string", "description": "Student ID associated with a parent." },
+        "points": { "type": "number" },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "moods": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "emoji": { "type": "string" },
+              "text": { "type": "string" },
+              "timestamp": { "type": "number" }
+            }
+          }
+        },
+        "email": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "role", "points", "badges", "moods", "email", "createdAt"]
+    },
+    "AppClass": {
+      "title": "AppClass",
+      "description": "A classroom group.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "studentIds": { "type": "array", "items": { "type": "string" } },
+        "studentNames": { "type": "array", "items": { "type": "string" } },
+        "subjects": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "code", "teacherId", "teacherName", "studentIds", "subjects", "createdAt"]
+    },
+    "AppMessage": {
+      "title": "AppMessage",
+      "description": "A message or announcement in a class.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "classId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "type": { "type": "string", "enum": ["announcement", "discussion"] },
+        "isPinned": { "type": "boolean" }
+      },
+      "required": ["id", "classId", "senderId", "senderName", "text", "timestamp", "type", "isPinned"]
+    },
+    "ClassReply": {
+      "title": "ClassReply",
+      "description": "A reply to a class message.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "authorId", "authorName", "text", "timestamp"]
+    },
+    "HelpRequest": {
+      "title": "HelpRequest",
+      "description": "A student's request for help.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "classId": { "type": "string" },
+        "text": { "type": "string" },
+        "audioUrl": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "isAnonymous": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pending", "resolved"] }
+      },
+      "required": ["id", "studentId", "studentName", "classId", "timestamp", "isAnonymous", "status"]
+    },
+    "AIChatSession": {
+      "title": "AIChatSession",
+      "description": "A student's AI chat session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "subject": { "type": "string" },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "sender": { "type": "string", "enum": ["user", "ai"] },
+              "text": { "type": "string" },
+              "timestamp": { "type": "number" }
+            }
+          }
+        },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "studentId", "messages", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Storage for user profiles."
+    },
+    "/classes/{classId}": {
+      "schema": "AppClass",
+      "description": "Storage for class information."
+    },
+    "/classes/{classId}/messages/{messageId}": {
+      "schema": "AppMessage",
+      "description": "Storage for class messages."
+    },
+    "/classes/{classId}/messages/{messageId}/replies/{replyId}": {
+      "schema": "ClassReply",
+      "description": "Storage for replies to class messages."
+    },
+    "/classes/{classId}/helpRequests/{requestId}": {
+      "schema": "HelpRequest",
+      "description": "Storage for student help requests."
+    },
+    "/aiChats/{chatId}": {
+      "schema": "AIChatSession",
+      "description": "Storage for student AI chat sessions."
+    }
+  }
+}
