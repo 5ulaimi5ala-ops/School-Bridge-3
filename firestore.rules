@@ -40,8 +40,8 @@ service cloud.firestore {
 
     // Validation Helpers
     function isValidUser(data) {
-      return data.keys().hasAll(['id', 'name', 'role', 'points', 'badges', 'moods', 'email', 'createdAt']) &&
-             data.keys().size() == 8 &&
+      return data.keys().hasAll(['id', 'name', 'role', 'points', 'badges', 'moods', 'email', 'createdAt', 'childId']) &&
+             data.keys().size() == 9 &&
              data.id == request.auth.uid &&
              data.name is string && data.name.size() <= 100 &&
              data.role in ['teacher', 'student', 'parent'] &&
@@ -49,7 +49,8 @@ service cloud.firestore {
              data.badges is list &&
              data.moods is list &&
              data.email is string &&
-             data.createdAt is timestamp;
+             data.createdAt is timestamp &&
+             (data.childId == null || (data.childId is string && data.childId.size() <= 128));
     }
 
     function isValidClass(data) {
